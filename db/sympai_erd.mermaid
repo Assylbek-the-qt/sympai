@@ -1,0 +1,45 @@
+erDiagram
+    doctors {
+        UUID id PK
+        VARCHAR full_name
+        VARCHAR email UK
+        VARCHAR password_hash
+        user_role role
+        BOOLEAN is_active
+        TIMESTAMPTZ created_at
+    }
+
+    patients {
+        UUID id PK
+        BIGINT telegram_id UK
+        VARCHAR full_name
+        SMALLINT age
+        diagnosis_type diagnosis
+        VARCHAR current_medication
+        TEXT comorbidities
+        VARCHAR language
+        UUID doctor_id FK
+        BOOLEAN is_active
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    daily_readings {
+        UUID id PK
+        UUID patient_id FK
+        DATE reading_date
+        SMALLINT sbp
+        SMALLINT dbp
+        SMALLINT pulse
+        NUMERIC glucose
+        BOOLEAN medication_taken
+        TEXT_ARRAY symptoms
+        TEXT notes
+        SMALLINT risk_score
+        risk_level risk_level
+        TIMESTAMPTZ doctor_reviewed_at
+        TIMESTAMPTZ created_at
+    }
+
+    doctors ||--o{ patients : "manages"
+    patients ||--o{ daily_readings : "submits"
