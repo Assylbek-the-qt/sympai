@@ -55,4 +55,14 @@ services:
 
   # tlg:
 
-  # web:
+  web:
+    container_name: sympai-web
+    build:
+      dockerfile: Dockerfile
+      context: ./web
+    ports:
+      - "3000:3000"
+    environment:
+      API_URL: http://api:3069
+    depends_on:
+      - api
