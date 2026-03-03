@@ -53,7 +53,16 @@ services:
     command: ["sh", "-c", "psql -h db -U postgres -d symp_ai -f /seed/mock_data.sql"]
     restart: "no"
 
-  # tlg:
+  tlg:
+    container_name: sympai-tlg
+    build:
+      dockerfile: Dockerfile
+      context: ./tlg
+    environment:
+      TOKEN: ${TELEGRAM_TOKEN}
+      API_URL: http://api:3069
+    depends_on:
+      - api
 
   web:
     container_name: sympai-web

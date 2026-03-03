@@ -109,9 +109,9 @@ The bot currently has wrong/missing fields compared to the actual DB schema:
 - [ ] Keep temp data (mid-flow answers) in memory only — acceptable to lose on restart
 
 ### Docker + compose
-- [ ] Create `tlg/requirements.txt`
-- [ ] Create `tlg/Dockerfile`
-- [ ] Uncomment `tlg` service in `compose.yaml`
+- [x] Create `tlg/requirements.txt`
+- [x] Create `tlg/Dockerfile`
+- [x] Uncomment `tlg` service in `compose.yaml`
   - `API_URL=http://api:3069`
   - `depends_on: api`
 
