@@ -25,12 +25,16 @@ class PatientUpdate(BaseModel):
     diagnosis: DiagnosisType | None = None
     current_medication: str | None = Field(default=None, max_length=200)
     language: str | None = Field(default=None, max_length=5)
+    state: str | None = Field(default=None, max_length=30)
+    comorbidities: str | None = None
 
 
 class PatientOut(PatientBase):
     id: uuid.UUID
     telegram_id: int
     doctor_id: uuid.UUID
+    state: str | None
+    comorbidities: str | None
     created_at: datetime
 
     class Config:

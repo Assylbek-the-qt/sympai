@@ -5,8 +5,8 @@
 
 INSERT INTO doctors (id, full_name, email, password)
 VALUES
-    ('11111111-1111-1111-1111-111111111111', 'Dr. Alice Morgan', 'alice.morgan@sympai.local', 'password123'),
-    ('22222222-2222-2222-2222-222222222222', 'Dr. Bekzat Nurgali', 'bekzat.nurgali@sympai.local', 'password123')
+    ('11111111-1111-1111-1111-111111111111', 'Dr. Alice Morgan', 'alice.morgan@sympai.local', '$2b$12$uS3h0uRLXl3hE1hNsSsoJOFpNY8sOedTjEKC1FHoaA1FLnDzMUktC'),
+    ('22222222-2222-2222-2222-222222222222', 'Dr. Bekzat Nurgali', 'bekzat.nurgali@sympai.local', '$2b$12$SSrYXXgig/7HPCyhhiZJoeEWKj.2.5a7XAnZzWD16zb1RVBQmYh8m')
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO patients (

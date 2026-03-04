@@ -1,6 +1,7 @@
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -11,8 +12,16 @@ router = APIRouter(prefix="/patients", tags=["patients"])
 
 
 @router.get("", response_model=list[PatientOut])
-def list_patients(db: Session = Depends(get_db)):
-    return patient_service.get_all(db)
+def list_patients(state: Optional[str] = Query(default=None), db: Session = Depends(get_db)):
+    return patient_service.get_all(db, state=state)
+
+
+@router.get("/by-telegram/{telegram_id}", response_model=PatientOut)
+def get_by_telegram(telegram_id: int, db: Session = Depends(get_db)):
+    patient = patient_service.get_by_telegram_id(db, telegram_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return patient
 
 
 @router.get("/{patient_id}", response_model=PatientOut)

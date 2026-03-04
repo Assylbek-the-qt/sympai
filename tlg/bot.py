@@ -10,7 +10,7 @@ from telegram.ext import (
 from texts import TEXTS
 from risk import calculate_risk
 
-load_dotenv()
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".dev.env"))
 TOKEN = os.getenv("TOKEN")
 
 logging.basicConfig(

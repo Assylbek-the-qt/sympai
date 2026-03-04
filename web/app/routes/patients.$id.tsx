@@ -1,4 +1,5 @@
-import { useLoaderData, Link } from "react-router";
+import { useLoaderData, Link, useNavigate } from "react-router";
+import { useEffect } from "react";
 import { api } from "../lib/api";
 
 export async function loader({ params }: { params: { id: string } }) {
@@ -21,6 +22,13 @@ const RISK_COLOR: Record<string, string> = {
 
 export default function PatientDetail() {
   const { patient, readings } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!localStorage.getItem("token")) {
+      navigate("/login", { replace: true });
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">

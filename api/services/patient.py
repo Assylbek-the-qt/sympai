@@ -6,8 +6,11 @@ from models.patient import Patient
 from schemas.patient import PatientCreate, PatientUpdate
 
 
-def get_all(db: Session) -> list[Patient]:
-    return db.query(Patient).all()
+def get_all(db: Session, state: str | None = None) -> list[Patient]:
+    q = db.query(Patient)
+    if state is not None:
+        q = q.filter(Patient.state == state)
+    return q.all()
 
 
 def get_by_id(db: Session, patient_id: uuid.UUID) -> Patient | None:

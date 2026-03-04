@@ -1,9 +1,17 @@
-import { useLoaderData, Link } from "react-router";
+import { useLoaderData, Link, redirect, useNavigate } from "react-router";
+import { useEffect } from "react";
 import { api } from "../lib/api";
+import type { Route } from "./+types/dashboard";
 
-export async function loader() {
+export async function loader({ request }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  const tokenFromUrl = url.searchParams.get("token");
+  if (tokenFromUrl) {
+    // Token just arrived from login redirect — let client store it, then reload clean
+    return { patients: [], pendingToken: tokenFromUrl };
+  }
   const patients = await api.patients.list();
-  return { patients };
+  return { patients, pendingToken: null };
 }
 
 export function meta() {
@@ -33,7 +41,19 @@ function StatCard({ label, value, sub }: { label: string; value: number | string
 }
 
 export default function Dashboard() {
-  const { patients } = useLoaderData<typeof loader>();
+  const { patients, pendingToken } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (pendingToken) {
+      localStorage.setItem("token", pendingToken);
+      navigate("/", { replace: true });
+      return;
+    }
+    if (!localStorage.getItem("token")) {
+      navigate("/login", { replace: true });
+    }
+  }, [pendingToken]);
 
   const total = patients.length;
   const hypertension = patients.filter((p: any) => p.diagnosis === "hypertension").length;
@@ -48,6 +68,12 @@ export default function Dashboard() {
           <h1 className="text-xl font-semibold text-gray-900">SympAI</h1>
           <p className="text-xs text-gray-400">Hypertension Monitoring</p>
         </div>
+        <button
+          onClick={() => { localStorage.removeItem("token"); navigate("/login", { replace: true }); }}
+          className="text-xs text-gray-400 hover:text-gray-700"
+        >
+          Sign out
+        </button>
       </header>
 
       <main className="px-8 py-8 max-w-7xl mx-auto">

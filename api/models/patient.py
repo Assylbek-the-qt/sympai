@@ -26,6 +26,8 @@ class Patient(Base):
     current_medication = Column(String(200), nullable=True)
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
     language = Column(String(5), nullable=False, default="ru")
+    state = Column(String(30), nullable=True)
+    comorbidities = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     doctor = relationship("Doctor")

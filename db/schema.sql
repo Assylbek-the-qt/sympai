@@ -16,6 +16,7 @@ CREATE TABLE doctors (
     full_name     VARCHAR(200)  NOT NULL,
     email         VARCHAR(255)  NOT NULL UNIQUE,
     password      VARCHAR(255)  NOT NULL,           -- plain text for MVP, hash later
+    telegram_id   BIGINT        UNIQUE,
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
@@ -32,6 +33,8 @@ CREATE TABLE patients (
     current_medication  VARCHAR(200),               -- single drug, nullable
     doctor_id           UUID           NOT NULL REFERENCES doctors(id),
     language            VARCHAR(5)     NOT NULL DEFAULT 'ru',
+    state               VARCHAR(30),
+    comorbidities       TEXT,
     created_at          TIMESTAMPTZ    NOT NULL DEFAULT now()
 );
 
