@@ -8,7 +8,7 @@ from telegram.ext import (
     filters, ContextTypes, CallbackContext,
 )
 from texts import TEXTS
-from risk import calculate_risk
+import api_client
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".dev.env"))
 TOKEN = os.getenv("TOKEN")
@@ -34,6 +34,7 @@ INIT_COMORBID = "init_comorbid"
 DAILY_SBP     = "daily_sbp"
 DAILY_DBP     = "daily_dbp"
 DAILY_PULSE   = "daily_pulse"
+DAILY_GLUCOSE = "daily_glucose"
 DAILY_MED     = "daily_med"
 DAILY_SYMPTOMS = "daily_symptoms"
 
@@ -42,6 +43,13 @@ users: dict[int, dict] = {}  # chat_id -> user data
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 TZ_ALMATY = timezone(timedelta(hours=5))
+
+DIAGNOSIS_MAP = {
+    "гипертония": "hypertension",
+    "диабет":     "diabetes",
+    "екеуі де":   "both",
+    "оба":        "both",
+}
 
 def t(chat_id: int, key: str) -> str:
     lang = users.get(chat_id, {}).get("lang", "ru")
@@ -70,7 +78,30 @@ def is_yes(text: str) -> bool:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"START | chat_id={chat_id}")
-    users[chat_id] = {"state": LANG, "temp": {}, "daily_logs": []}
+
+    # Check if already registered
+    try:
+        patient = await api_client.get_patient(chat_id)
+    except Exception as e:
+        logger.warning(f"START | API unreachable: {e}")
+        patient = None
+
+    if patient:
+        users[chat_id] = {
+            "state": None,
+            "lang": patient.get("language", "ru"),
+            "patient_id": patient["id"],
+            "diagnosis_type": patient["diagnosis"],
+            "temp": {},
+            "daily_logs": [],
+        }
+        logger.info(f"START | Already registered patient_id={patient['id']}")
+        await update.message.reply_text(
+            t(chat_id, "idle_hint"), reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    users[chat_id] = {"state": LANG, "temp": {}}
     await update.message.reply_text(
         TEXTS["kz"]["choose_lang"],
         reply_markup=mkb(["🇰🇿 Қазақша", "🇷🇺 Русский"]),
@@ -110,25 +141,74 @@ async def _age(update: Update, user: dict, text: str):
         return
     user["age"] = int(text)
     user["state"] = DOCTOR
-    logger.info(f"AGE | chat_id={chat_id} | age={text}")
-    await update.message.reply_text(t(chat_id, "ask_doctor"))
+
+    # Load doctors from API and show as keyboard
+    try:
+        doctors = await api_client.list_doctors()
+    except Exception as e:
+        logger.error(f"AGE | Failed to load doctors: {e}")
+        await update.message.reply_text(t(chat_id, "doctor_load_error"))
+        user["state"] = AGE  # stay, let user retry
+        return
+
+    if not doctors:
+        logger.error("AGE | No doctors in DB")
+        await update.message.reply_text(t(chat_id, "doctor_load_error"))
+        user["state"] = AGE
+        return
+
+    # Store name→id map for lookup in _doctor()
+    user["temp"]["doctors_map"] = {d["full_name"]: d["id"] for d in doctors}
+    names = [d["full_name"] for d in doctors]
+
+    # Build keyboard rows of 1
+    rows = [[name] for name in names]
+    logger.info(f"AGE | chat_id={chat_id} | age={text} | {len(doctors)} doctors loaded")
+    await update.message.reply_text(t(chat_id, "ask_doctor"), reply_markup=mkb(*rows))
 
 async def _doctor(update: Update, user: dict, text: str):
     chat_id = update.effective_chat.id
-    user["doctor"] = text
+    doctors_map: dict = user["temp"].get("doctors_map", {})
+    doctor_id = doctors_map.get(text)
+
+    if not doctor_id:
+        # Show keyboard again if invalid selection
+        rows = [[name] for name in doctors_map.keys()]
+        await update.message.reply_text(
+            t(chat_id, "ask_doctor"), reply_markup=mkb(*rows)
+        )
+        return
+
+    user["doctor_id"] = doctor_id
     user["state"] = DIAGNOSIS
-    logger.info(f"DOCTOR | chat_id={chat_id} | doctor={text!r}")
+    logger.info(f"DOCTOR | chat_id={chat_id} | doctor_id={doctor_id}")
     await update.message.reply_text(
         t(chat_id, "ask_diagnosis"),
-        reply_markup=mkb([t(chat_id, "yes"), t(chat_id, "no")]),
+        reply_markup=mkb([
+            t(chat_id, "diagnosis_hypertension"),
+            t(chat_id, "diagnosis_diabetes"),
+            t(chat_id, "diagnosis_both"),
+        ]),
     )
 
 async def _diagnosis(update: Update, user: dict, text: str):
     chat_id = update.effective_chat.id
-    user["diagnosis_confirmed"] = is_yes(text)
+    diagnosis_type = DIAGNOSIS_MAP.get(text.lower())
+    if not diagnosis_type:
+        await update.message.reply_text(
+            t(chat_id, "ask_diagnosis"),
+            reply_markup=mkb([
+                t(chat_id, "diagnosis_hypertension"),
+                t(chat_id, "diagnosis_diabetes"),
+                t(chat_id, "diagnosis_both"),
+            ]),
+        )
+        return
+
+    user["diagnosis_type"] = diagnosis_type
     user["state"] = INIT_BP1
     user["temp"]["bp_history"] = []
-    logger.info(f"DIAGNOSIS | chat_id={chat_id} | confirmed={user['diagnosis_confirmed']}")
+    logger.info(f"DIAGNOSIS | chat_id={chat_id} | type={diagnosis_type}")
     await update.message.reply_text(t(chat_id, "ask_bp_1"), reply_markup=ReplyKeyboardRemove())
 
 async def _init_bp(update: Update, user: dict, text: str, next_state: str, next_key: str):
@@ -162,26 +242,68 @@ async def _init_med(update: Update, user: dict, text: str):
 async def _init_comorbid(update: Update, user: dict, text: str):
     chat_id = update.effective_chat.id
     user["comorbidities"] = text
-    user["bp_history"] = user["temp"].pop("bp_history", [])
-    user["state"] = None
-    logger.info(f"REGISTERED | chat_id={chat_id} | name={user['name']}")
-    await update.message.reply_text(t(chat_id, "registration_complete"))
-    _print_patient(chat_id, user)
+
+    payload = {
+        "full_name":          user["name"],
+        "age":                user["age"],
+        "telegram_id":        chat_id,
+        "doctor_id":          user["doctor_id"],
+        "diagnosis":          user["diagnosis_type"],
+        "current_medication": user.get("medicines"),
+        "language":           user["lang"],
+        "comorbidities":      text if text.lower() not in ["жоқ", "нет", "no"] else None,
+    }
+
+    try:
+        patient = await api_client.create_patient(payload)
+        user["patient_id"] = patient["id"]
+        user["temp"].pop("bp_history", None)
+        user["state"] = None
+        # Sync idle state to API so cron can find this patient
+        await api_client.set_patient_state(patient["id"], "idle")
+        logger.info(f"REGISTERED | chat_id={chat_id} | patient_id={patient['id']}")
+        await update.message.reply_text(t(chat_id, "registration_complete"))
+    except Exception as e:
+        logger.error(f"COMORBID | create_patient failed: {e}")
+        await update.message.reply_text(t(chat_id, "registration_error"))
+        user["state"] = None  # reset so user can /start again
 
 # ── Daily check cron ──────────────────────────────────────────────────────────
 async def _start_daily_check_for(bot, chat_id: int, user: dict):
+    if not user.get("patient_id"):
+        logger.warning(f"DAILY_START | Skipping chat_id={chat_id} — no patient_id (registration incomplete)")
+        return
     user["state"] = DAILY_SBP
     user["temp"] = {"date": datetime.now(TZ_ALMATY).strftime("%Y-%m-%d")}
-    logger.info(f"DAILY_START | chat_id={chat_id} | user={user.get('name')}")
+    # Mark in_check so cron doesn't trigger this patient again today
+    try:
+        await api_client.set_patient_state(user["patient_id"], "in_check")
+    except Exception as e:
+        logger.warning(f"DAILY_START | Could not set state in_check for {user['patient_id']}: {e}")
+    logger.info(f"DAILY_START | chat_id={chat_id} | patient_id={user['patient_id']}")
     await bot.send_message(chat_id, t(chat_id, "daily_intro"))
     await bot.send_message(chat_id, t(chat_id, "ask_sbp"))
 
 async def daily_check_job(context: CallbackContext):
     logger.info("CRON | Daily check triggered")
-    idle_users = [(cid, u) for cid, u in users.items() if u.get("state") is None]
-    logger.info(f"CRON | {len(idle_users)} idle patient(s) to notify")
-    for chat_id, user in idle_users:
-        await _start_daily_check_for(context.bot, chat_id, user)
+    try:
+        idle_patients = await api_client.get_idle_patients()
+    except Exception as e:
+        logger.error(f"CRON | Failed to fetch idle patients: {e}")
+        # Fall back to in-memory
+        idle_patients = []
+        for cid, u in users.items():
+            if u.get("state") is None and u.get("patient_id"):
+                idle_patients.append({"telegram_id": cid})
+
+    logger.info(f"CRON | {len(idle_patients)} idle patient(s) to notify")
+    for patient in idle_patients:
+        tg_id = patient.get("telegram_id")
+        if not tg_id or tg_id not in users:
+            continue
+        user = users[tg_id]
+        if user.get("state") is None:
+            await _start_daily_check_for(context.bot, tg_id, user)
 
 # ── Daily check handlers ──────────────────────────────────────────────────────
 async def _daily_sbp(update: Update, user: dict, text: str):
@@ -210,8 +332,32 @@ async def _daily_pulse(update: Update, user: dict, text: str):
         await update.message.reply_text(t(chat_id, "invalid_number"))
         return
     user["temp"]["pulse"] = int(text)
+
+    # Ask glucose for diabetes/both patients
+    if user.get("diagnosis_type") in ("diabetes", "both"):
+        user["state"] = DAILY_GLUCOSE
+        logger.info(f"DAILY_PULSE | chat_id={chat_id} | pulse={text} | next=glucose")
+        await update.message.reply_text(t(chat_id, "ask_glucose"))
+    else:
+        user["state"] = DAILY_MED
+        logger.info(f"DAILY_PULSE | chat_id={chat_id} | pulse={text} | next=med")
+        await update.message.reply_text(
+            t(chat_id, "ask_med_taken"),
+            reply_markup=mkb([t(chat_id, "yes"), t(chat_id, "no")]),
+        )
+
+async def _daily_glucose(update: Update, user: dict, text: str):
+    chat_id = update.effective_chat.id
+    try:
+        glucose = float(text.replace(",", "."))
+        if not (1.0 <= glucose <= 30.0):
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text(t(chat_id, "invalid_number"))
+        return
+    user["temp"]["glucose"] = glucose
     user["state"] = DAILY_MED
-    logger.info(f"DAILY_PULSE | chat_id={chat_id} | pulse={text}")
+    logger.info(f"DAILY_GLUCOSE | chat_id={chat_id} | glucose={glucose}")
     await update.message.reply_text(
         t(chat_id, "ask_med_taken"),
         reply_markup=mkb([t(chat_id, "yes"), t(chat_id, "no")]),
@@ -244,21 +390,34 @@ async def _daily_symptoms(update: Update, user: dict, text: str):
     tl = text.lower()
     symptoms = [eng for phrase, eng in SYMPTOM_KEYS.items() if phrase in tl]
 
-    log = {
-        "date":      user["temp"]["date"],
-        "sbp":       user["temp"]["sbp"],
-        "dbp":       user["temp"]["dbp"],
-        "pulse":     user["temp"]["pulse"],
-        "med_taken": user["temp"]["med_taken"],
-        "symptoms":  symptoms,
-    }
-    risk = calculate_risk(user, log)
-    log["risk"] = risk
-    user["daily_logs"].append(log)
-    user["state"] = None
+    if not user.get("patient_id"):
+        logger.error(f"DAILY_SYMPTOMS | No patient_id for chat_id={chat_id} — skipping submit")
+        user["state"] = None
+        await update.message.reply_text(t(chat_id, "registration_error"), reply_markup=ReplyKeyboardRemove())
+        return
 
-    logger.info(f"DAILY_DONE | chat_id={chat_id} | symptoms={symptoms} | risk={risk.upper()}")
-    _print_daily_log(user, log)
+    payload = {
+        "patient_id":       user["patient_id"],
+        "reading_date":     datetime.now(TZ_ALMATY).strftime("%Y-%m-%d"),
+        "sbp":              user["temp"]["sbp"],
+        "dbp":              user["temp"]["dbp"],
+        "pulse":            user["temp"]["pulse"],
+        "glucose":          user["temp"].get("glucose"),
+        "medication_taken": user["temp"]["med_taken"],
+        "symptoms":         symptoms if symptoms else None,
+    }
+
+    try:
+        reading = await api_client.submit_reading(payload)
+        risk = reading.get("risk_level", "low")
+        logger.info(f"DAILY_DONE | chat_id={chat_id} | symptoms={symptoms} | risk={risk.upper()}")
+        # Reset to idle so cron picks this patient up tomorrow
+        await api_client.set_patient_state(user["patient_id"], "idle")
+    except Exception as e:
+        logger.error(f"DAILY_SYMPTOMS | submit_reading failed: {e}")
+        risk = "low"  # show neutral response on API failure
+
+    user["state"] = None
 
     await update.message.reply_text(
         t(chat_id, f"risk_{risk}"),
@@ -280,6 +439,7 @@ ROUTES = {
     DAILY_SBP:     _daily_sbp,
     DAILY_DBP:     _daily_dbp,
     DAILY_PULSE:   _daily_pulse,
+    DAILY_GLUCOSE: _daily_glucose,
     DAILY_MED:     _daily_med,
     DAILY_SYMPTOMS:_daily_symptoms,
 }
@@ -306,32 +466,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if handler:
         await handler(update, user, text)
 
-# ── Console output helpers ────────────────────────────────────────────────────
-def _print_patient(chat_id: int, user: dict):
-    sep = "=" * 35
-    print(f"\n{sep}")
-    print("NEW PATIENT REGISTERED")
-    print(f"  chat_id:       {chat_id}")
-    print(f"  Name:          {user['name']}")
-    print(f"  Age:           {user['age']}")
-    print(f"  Doctor:        {user['doctor']}")
-    print(f"  Lang:          {user['lang']}")
-    print(f"  Diagnosis:     {user['diagnosis_confirmed']}")
-    print(f"  Medicines:     {user['medicines']}")
-    print(f"  Comorbidities: {user['comorbidities']}")
-    print(f"  BP History:    {user['bp_history']}")
-    print(f"{sep}\n")
+# ── Startup: reload patients from API ────────────────────────────────────────
+async def on_startup(app) -> None:
+    """Populate in-memory users dict from API on bot start."""
+    try:
+        patients = await api_client.get_all_patients()
+    except Exception as e:
+        logger.warning(f"STARTUP | Could not load patients from API: {e}")
+        return
 
-def _print_daily_log(user: dict, log: dict):
-    sep = "=" * 35
-    print(f"\n{sep}")
-    print("DAILY LOG")
-    print(f"  Patient:   {user['name']}  |  {log['date']}")
-    print(f"  BP:        {log['sbp']}/{log['dbp']}  |  Pulse: {log['pulse']}")
-    print(f"  Medicine:  {'Yes' if log['med_taken'] else 'No'}")
-    print(f"  Symptoms:  {log['symptoms'] or 'none'}")
-    print(f"  RISK:      {log['risk'].upper()}")
-    print(f"{sep}\n")
+    for p in patients:
+        tg_id = p.get("telegram_id")
+        if not tg_id:
+            continue
+        users[tg_id] = {
+            "state":          None,
+            "patient_id":     p["id"],
+            "lang":           p.get("language", "ru"),
+            "diagnosis_type": p.get("diagnosis"),
+            "temp":           {},
+        }
+
+    logger.info(f"STARTUP | Loaded {len([p for p in patients if p.get('telegram_id')])} patient(s) into memory")
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 def main():
@@ -339,7 +495,7 @@ def main():
     logger.info("  SympAI Hypertension Bot starting...")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("check", cmd_check))

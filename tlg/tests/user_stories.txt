@@ -1,0 +1,166 @@
+SympAI Bot — User Stories for Manual Testing
+=============================================
+
+──────────────────────────────────────────────
+STORY 1: New patient registers (Russian, Hypertension)
+──────────────────────────────────────────────
+1. Open Telegram, find the bot, send /start
+2. Bot shows language keyboard → tap "🇷🇺 Русский"
+3. Bot asks for full name → type "Иванов Иван"
+4. Bot asks for age → type "52"
+5. Bot shows list of doctors → tap a doctor name from the keyboard
+6. Bot asks for diagnosis → tap "Гипертония"
+7. Bot asks for BP 3 days ago → type "150/95"
+8. Bot asks for BP 2 days ago → type "148/92"
+9. Bot asks for BP yesterday → type "145/90"
+10. Bot asks for medications → type "Лизиноприл 10мг"
+11. Bot asks for other conditions → type "нет"
+12. Bot replies: ✅ Регистрация завершена!
+
+EXPECTED: Patient record created in DB with diagnosis=hypertension,
+          comorbidities=NULL, state=idle.
+
+──────────────────────────────────────────────
+STORY 2: New patient registers (Kazakh, Diabetes)
+──────────────────────────────────────────────
+1. Send /start → tap "🇰🇿 Қазақша"
+2. Enter name → "Сейткали Аскар"
+3. Enter age → "45"
+4. Select doctor from keyboard
+5. Tap "Диабет"
+6. Enter 3 BP readings: "130/80", "128/82", "132/79"
+7. Enter medications → "Метформин 500мг"
+8. Enter comorbidities → "Семейный диабет"
+9. Bot replies: ✅ Тіркелу аяқталды!
+
+EXPECTED: Patient record created with diagnosis=diabetes,
+          comorbidities="Семейный диабет", language=kz.
+
+──────────────────────────────────────────────
+STORY 3: New patient registers (Both diagnoses)
+──────────────────────────────────────────────
+Same as Story 1 but at step 6 tap "Оба" (ru) or "Екеуі де" (kz).
+
+EXPECTED: diagnosis=both in DB.
+
+──────────────────────────────────────────────
+STORY 4: Patient does daily check (Hypertension — no glucose)
+──────────────────────────────────────────────
+Precondition: Patient already registered with diagnosis=hypertension.
+
+1. Send /check
+2. Bot asks for upper BP → type "145"
+3. Bot asks for lower BP → type "92"
+4. Bot asks for pulse → type "78"
+5. Bot asks med taken → tap "Да" / "Иә"
+6. Bot asks symptoms → tap "Нет" / symptom button
+7. Bot replies with risk message (✅ / ⚠️ / 🚨)
+
+EXPECTED: Reading saved in DB with correct values.
+          Glucose field is NULL (not asked for hypertension).
+          Patient state reset to idle.
+
+──────────────────────────────────────────────
+STORY 5: Patient does daily check (Diabetes — glucose asked)
+──────────────────────────────────────────────
+Precondition: Patient registered with diagnosis=diabetes or both.
+
+1. Send /check
+2. Enter SBP → "138"
+3. Enter DBP → "88"
+4. Enter pulse → "72"
+5. Bot NOW asks for glucose (extra step) → type "6.2"
+6. Bot asks med taken → "Да"
+7. Bot asks symptoms → "Нет"
+8. Bot replies with risk message
+
+EXPECTED: Glucose=6.2 saved in reading. Patient state reset to idle.
+
+──────────────────────────────────────────────
+STORY 6: Patient types invalid values (validation)
+──────────────────────────────────────────────
+During daily check:
+- Enter "abc" for SBP → bot says "Введите только цифры." stays on same question
+- Enter "40" for SBP (out of range) → same error, stays
+- Enter "150" → accepted, moves on
+- Enter "abc" for DBP → same error
+- Enter "75" → accepted
+- Enter "abc" for pulse → same error
+- Enter "72" → accepted
+
+During glucose (diabetes patient):
+- Enter "0" → error (below 1.0)
+- Enter "abc" → error
+- Enter "5,6" → accepted (comma treated as decimal)
+
+During registration BP:
+- Enter "150-90" → "Неверный формат. Например: 130/80", stays on same BP question
+- Enter "400/90" → same error (SBP too high)
+- Enter "150/90" → accepted
+
+EXPECTED: Bot never crashes. It always re-asks the same question on bad input.
+
+──────────────────────────────────────────────
+STORY 7: Returning patient sends /start again
+──────────────────────────────────────────────
+1. Patient who already registered sends /start
+2. Bot replies: "Для ежедневной проверки введите /check." (idle_hint)
+3. No registration flow started
+
+EXPECTED: Duplicate patient NOT created in DB.
+
+──────────────────────────────────────────────
+STORY 8: Patient tries /check while already in a flow
+──────────────────────────────────────────────
+1. Patient sends /check → daily flow starts, asks for SBP
+2. Patient sends /check again (instead of answering)
+3. Bot replies: "Сначала ответьте на текущие вопросы."
+
+EXPECTED: No duplicate flow started.
+
+──────────────────────────────────────────────
+STORY 9: Unknown user sends a message
+──────────────────────────────────────────────
+1. Brand new Telegram account sends any text (no /start)
+2. Bot replies: "Для начала введите /start."
+
+EXPECTED: No crash, no data created.
+
+──────────────────────────────────────────────
+STORY 10: Bot restart — patient data survives
+──────────────────────────────────────────────
+1. Register a patient (Story 1 or 2)
+2. Stop and restart the bot container
+3. Send /check from the same Telegram account
+4. Daily check flow starts normally
+
+EXPECTED: Bot loaded patient from API on startup.
+          No re-registration needed.
+
+──────────────────────────────────────────────
+STORY 11: Patient reports symptoms
+──────────────────────────────────────────────
+During daily check at symptoms step:
+- Tap "Головная боль" → reading saved with symptoms=["headache"]
+- Tap "Боль в груди" → symptoms=["chest_pain"], likely risk=high
+- Tap "Нет" → symptoms=NULL
+
+EXPECTED: symptoms array stored correctly, risk level reflects severity.
+
+──────────────────────────────────────────────
+STORY 12: Doctor doctor-selection keyboard works
+──────────────────────────────────────────────
+During registration at doctor selection:
+- Type a random name not in the list → keyboard re-shown, nothing stored
+- Tap a valid doctor name from keyboard → accepted, moves to diagnosis
+
+EXPECTED: Only valid doctor UUIDs are stored, never free-text.
+
+──────────────────────────────────────────────
+EDGE CASES TO CHECK MANUALLY
+──────────────────────────────────────────────
+- Two patients register simultaneously (different Telegram accounts) — both complete independently
+- Patient sends empty message or just spaces during a flow — bot should handle gracefully
+- API is down when patient tries to register — bot shows error, /start works again later
+- Patient with very long name or medication text — no crash
+- Glucose entered as "5.6" and "5,6" — both accepted

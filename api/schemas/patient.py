@@ -17,6 +17,7 @@ class PatientBase(BaseModel):
 class PatientCreate(PatientBase):
     telegram_id: int
     doctor_id: uuid.UUID
+    comorbidities: str | None = None
 
 
 class PatientUpdate(BaseModel):

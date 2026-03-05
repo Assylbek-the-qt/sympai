@@ -33,6 +33,7 @@
 - [ ] `GET /patients/{id}/compliance` — % of days with a reading in the last 30 days
 - [x] Add `state: str | None` to `PatientUpdate` + `PatientOut` schemas
 - [x] Add `state` + `comorbidities` to ORM model
+- [x] Add `comorbidities: str | None` to `PatientCreate` schema
 
 ### Risk scoring
 - [x] `api/services/risk.py` — `calculate_risk(recent_readings, current) -> (level, score)`
@@ -55,34 +56,36 @@
 ## Telegram bot
 
 ### Fix registration flow — schema mismatches
-- [ ] Replace yes/no diagnosis question with type selection keyboard
+- [x] Replace yes/no diagnosis question with type selection keyboard
   - `Гипертония | Диабет | Екеуі де` → maps to `hypertension | diabetes | both`
-- [ ] Doctor selection: fetch `GET /doctors`, show as keyboard, store `doctor_id` UUID
-- [ ] Add glucose question after pulse — only for `diagnosis in [diabetes, both]`
-- [ ] Pass `comorbidities` free-text to `POST /patients`
-- [ ] Pass `language` (kz/ru) to `POST /patients`
+- [x] Doctor selection: fetch `GET /doctors`, show as keyboard, store `doctor_id` UUID
+- [x] Add glucose question after pulse — only for `diagnosis in [diabetes, both]`
+- [x] Pass `comorbidities` free-text to `POST /patients`
+- [x] Pass `language` (kz/ru) to `POST /patients`
 
 ### API client
-- [ ] `pip install httpx`, add to `tlg/requirements.txt`
-- [ ] Create `tlg/api_client.py`
+- [x] `httpx` already in `tlg/requirements.txt`
+- [x] Created `tlg/api_client.py` (async)
   - `get_patient(telegram_id)` → `GET /patients/by-telegram/{id}`
   - `create_patient(data)` → `POST /patients`
   - `list_doctors()` → `GET /doctors`
   - `submit_reading(data)` → `POST /readings`
   - `get_idle_patients()` → `GET /patients?state=idle`
+  - `get_all_patients()` → `GET /patients`
   - `set_patient_state(patient_id, state)` → `PATCH /patients/{id}`
 
 ### Swap in-memory dict for API
-- [ ] `cmd_start`: call `get_patient(chat_id)` — skip registration if already exists
-- [ ] `_init_comorbid`: call `create_patient(...)` on registration complete
-- [ ] `_daily_symptoms`: call `submit_reading(...)` instead of appending to local list
-- [ ] `daily_check_job`: call `get_idle_patients()` instead of iterating local dict
-- [ ] `handle_message`: load patient from API when not in active flow dict
-- [ ] Delete `tlg/risk.py` — use `risk_level` from API response
+- [x] `cmd_start`: calls `get_patient(chat_id)` — skips registration if already exists
+- [x] `_init_comorbid`: calls `create_patient(...)` on registration complete
+- [x] `_daily_symptoms`: calls `submit_reading(...)`, uses `risk_level` from API response
+- [x] `daily_check_job`: calls `get_idle_patients()` from API (fallback to memory)
+- [x] Delete `tlg/risk.py` — use `risk_level` from API response (pending file deletion)
 
 ### State persistence
-- [ ] Each state transition: call `set_patient_state(...)` to persist to DB
-- [ ] On bot startup: fetch all patients with non-null state, reload into in-memory dict
+- [x] After registration: `set_patient_state(id, "idle")`
+- [x] Daily check start: `set_patient_state(id, "in_check")`
+- [x] Daily check end: `set_patient_state(id, "idle")`
+- [x] On bot startup: `on_startup()` fetches all patients, reloads into `users` dict
 
 ### Docker + compose
 - [x] `tlg/requirements.txt` + `tlg/Dockerfile`
@@ -134,7 +137,11 @@
 ---
 
 ## Known bugs / active mismatches
-- [ ] Bot diagnosis handler asks yes/no — needs type keyboard
-- [ ] Bot stores doctor as free-text name — needs `doctor_id` UUID from API
-- [ ] Bot never asks glucose — needed for diabetes/both patients
-- [ ] Bot is fully in-memory — restart wipes all patient data
+- [x] Bot diagnosis handler asks yes/no — fixed: type keyboard (Гипертония/Диабет/Екеуі де)
+- [x] Bot stores doctor as free-text name — fixed: stores UUID from API
+- [x] Bot never asks glucose — fixed: asked for diabetes/both patients
+- [x] Bot is fully in-memory — fixed: API-backed with startup reload
+
+## Testing
+- [x] `tlg/tests/user_stories.txt` — 12 manual test scenarios
+- [x] `tlg/tests/test_bot.py` — 69 pytest unit test cases (run with pytest + pytest-asyncio)
