@@ -59,7 +59,7 @@ services:
       dockerfile: Dockerfile
       context: ./tlg
     environment:
-      TOKEN: ${TELEGRAM_TOKEN}
+      TOKEN: 8597233867:AAETWDlcqRCAP7W5cbYRLaEp5el-blIpf3M
       API_URL: http://api:3069
     depends_on:
       - api
