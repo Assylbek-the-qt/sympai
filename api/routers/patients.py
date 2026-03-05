@@ -11,6 +11,11 @@ from services import patient as patient_service
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
+@router.get("/stats")
+def get_stats(db: Session = Depends(get_db)):
+    return patient_service.get_stats(db)
+
+
 @router.get("", response_model=list[PatientOut])
 def list_patients(state: Optional[str] = Query(default=None), db: Session = Depends(get_db)):
     return patient_service.get_all(db, state=state)
@@ -43,6 +48,14 @@ def update_patient(patient_id: uuid.UUID, data: PatientUpdate, db: Session = Dep
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
+
+
+@router.get("/{patient_id}/compliance")
+def get_compliance(patient_id: uuid.UUID, days: int = 30, db: Session = Depends(get_db)):
+    patient = patient_service.get_by_id(db, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return patient_service.get_compliance(db, patient_id, days)
 
 
 @router.delete("/{patient_id}", status_code=204)

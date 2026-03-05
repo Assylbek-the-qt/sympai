@@ -21,6 +21,8 @@ export const api = {
   patients: {
     list: () => apiFetch("/patients"),
     get: (id: string) => apiFetch(`/patients/${id}`),
+    stats: () => apiFetch("/patients/stats"),
+    compliance: (id: string, days = 30) => apiFetch(`/patients/${id}/compliance?days=${days}`),
   },
   readings: {
     list: (patientId: string, limit = 30) =>

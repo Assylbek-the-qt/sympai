@@ -7,11 +7,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const tokenFromUrl = url.searchParams.get("token");
   if (tokenFromUrl) {
-    // Token just arrived from login redirect — let client store it, then reload clean
-    return { patients: [], pendingToken: tokenFromUrl };
+    return { patients: [], stats: null, pendingToken: tokenFromUrl };
   }
-  const patients = await api.patients.list();
-  return { patients, pendingToken: null };
+  const [patients, stats] = await Promise.all([
+    api.patients.list(),
+    api.patients.stats(),
+  ]);
+  return { patients, stats, pendingToken: null };
 }
 
 export function meta() {
@@ -30,18 +32,20 @@ const DIAGNOSIS_COLOR: Record<string, string> = {
   both:         "bg-orange-100 text-orange-800",
 };
 
-function StatCard({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
+function StatCard({ label, value, sub, accent }: { label: string; value: number | string; sub?: string; accent?: "red" | "yellow" | "green" }) {
+  const border = accent === "red" ? "border-red-200 bg-red-50" : accent === "yellow" ? "border-yellow-200 bg-yellow-50" : "bg-white border-gray-200";
+  const text = accent === "red" ? "text-red-700" : accent === "yellow" ? "text-yellow-700" : "text-gray-900";
   return (
-    <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
+    <div className={`rounded-xl border px-6 py-5 ${border}`}>
       <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-3xl font-semibold text-gray-900 mt-1">{value}</p>
+      <p className={`text-3xl font-semibold mt-1 ${text}`}>{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
   );
 }
 
 export default function Dashboard() {
-  const { patients, pendingToken } = useLoaderData<typeof loader>();
+  const { patients, stats, pendingToken } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -77,9 +81,31 @@ export default function Dashboard() {
       </header>
 
       <main className="px-8 py-8 max-w-7xl mx-auto">
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Total Patients" value={total} />
+        {/* Key metrics row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+          <StatCard label="Total Patients" value={stats?.total_patients ?? total} />
+          <StatCard
+            label="High Risk"
+            value={stats?.high_risk_count ?? "—"}
+            sub="latest reading"
+            accent={stats?.high_risk_count > 0 ? "red" : undefined}
+          />
+          <StatCard
+            label="Avg Compliance"
+            value={stats ? `${stats.avg_compliance_pct}%` : "—"}
+            sub="last 30 days"
+            accent={stats?.avg_compliance_pct < 60 ? "yellow" : "green"}
+          />
+          <StatCard
+            label="Missed Today"
+            value={stats ? `${stats.missed_today_pct}%` : "—"}
+            sub={stats ? `${stats.missed_today} patients` : undefined}
+            accent={stats?.missed_today_pct > 30 ? "yellow" : undefined}
+          />
+        </div>
+
+        {/* Diagnosis breakdown row */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
           <StatCard label="Hypertension" value={hypertension} sub={`${Math.round((hypertension / total) * 100) || 0}% of patients`} />
           <StatCard label="Diabetes" value={diabetes} sub={`${Math.round((diabetes / total) * 100) || 0}% of patients`} />
           <StatCard label="Both" value={both} sub={`${Math.round((both / total) * 100) || 0}% of patients`} />

@@ -1,13 +1,15 @@
 import { useLoaderData, Link, useNavigate } from "react-router";
 import { useEffect } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { api } from "../lib/api";
 
 export async function loader({ params }: { params: { id: string } }) {
-  const [patient, readings] = await Promise.all([
+  const [patient, readings, compliance] = await Promise.all([
     api.patients.get(params.id),
     api.readings.list(params.id, 30),
+    api.patients.compliance(params.id),
   ]);
-  return { patient, readings };
+  return { patient, readings, compliance };
 }
 
 export function meta({ data }: any) {
@@ -21,7 +23,7 @@ const RISK_COLOR: Record<string, string> = {
 };
 
 export default function PatientDetail() {
-  const { patient, readings } = useLoaderData<typeof loader>();
+  const { patient, readings, compliance } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,6 +31,11 @@ export default function PatientDetail() {
       navigate("/login", { replace: true });
     }
   }, []);
+
+  // Recharts needs oldest → newest
+  const chartData = [...readings]
+    .reverse()
+    .map((r: any) => ({ date: r.reading_date, SBP: r.sbp, DBP: r.dbp }));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -41,12 +48,37 @@ export default function PatientDetail() {
       </header>
 
       <main className="px-8 py-8 max-w-5xl mx-auto space-y-6">
-        {/* Patient info */}
-        <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+        {/* Patient info + compliance */}
+        <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div><p className="text-gray-400 text-xs">Medication</p><p className="text-gray-800 mt-0.5">{patient.current_medication ?? "—"}</p></div>
           <div><p className="text-gray-400 text-xs">Telegram ID</p><p className="text-gray-800 mt-0.5">{patient.telegram_id}</p></div>
           <div><p className="text-gray-400 text-xs">Registered</p><p className="text-gray-800 mt-0.5">{new Date(patient.created_at).toLocaleDateString()}</p></div>
+          <div>
+            <p className="text-gray-400 text-xs">Compliance (30d)</p>
+            <p className={`text-lg font-semibold mt-0.5 ${compliance.compliance_pct >= 70 ? "text-green-600" : compliance.compliance_pct >= 40 ? "text-yellow-600" : "text-red-600"}`}>
+              {compliance.compliance_pct}%
+            </p>
+            <p className="text-xs text-gray-400">{compliance.readings_in_period}/{compliance.total_days} days</p>
+          </div>
         </div>
+
+        {/* BP Trend Chart */}
+        {chartData.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
+            <h2 className="text-sm font-medium text-gray-700 mb-4">Blood Pressure Trend</h2>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
+                <YAxis domain={[50, 200]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip />
+                <Legend iconType="circle" iconSize={8} />
+                <Line type="monotone" dataKey="SBP" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="DBP" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {/* Readings */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

@@ -30,7 +30,7 @@
 ### Patients — extend existing router
 - [x] `GET /patients/by-telegram/{telegram_id}` — bot lookup by chat_id
 - [x] `GET /patients?state=idle` — query param filter so cron job can fetch idle patients
-- [ ] `GET /patients/{id}/compliance` — % of days with a reading in the last 30 days
+- [x] `GET /patients/{id}/compliance` — % of days with a reading in the last 30 days
 - [x] Add `state: str | None` to `PatientUpdate` + `PatientOut` schemas
 - [x] Add `state` + `comorbidities` to ORM model
 - [x] Add `comorbidities: str | None` to `PatientCreate` schema
@@ -109,12 +109,12 @@
 ### Dashboard stat cards (from original spec)
 - [x] Total patients
 - [x] By diagnosis (hypertension / diabetes / both)
-- [ ] High risk count — patients whose latest reading is `risk_level = high`
-- [ ] Compliance % — avg across all patients (needs compliance endpoint)
-- [ ] Missed entry % — days without a reading
+- [x] High risk count — patients whose latest reading is `risk_level = high`
+- [x] Compliance % — avg across all patients (needs compliance endpoint)
+- [x] Missed entry % — days without a reading
 
 ### Patient detail
-- [ ] BP trend chart — Recharts `<LineChart>` (SBP + DBP over time)
+- [x] BP trend chart — Recharts `<LineChart>` (SBP + DBP over time)
 
 ---
 
@@ -130,7 +130,7 @@
 ## Infra / ops
 - [x] `.dev.env` at project root (gitignored)
 - [x] `dev-compose.yaml` — all services, uses `.dev.env`
-- [ ] `GET /patients/{id}/compliance` endpoint
+- [x] `GET /patients/{id}/compliance` endpoint
 - [ ] High-risk alert push to doctor's Telegram (after reading scores high)
 - [ ] End-of-day missed entry background job (23:59 cron)
 
