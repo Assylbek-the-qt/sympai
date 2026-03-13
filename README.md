@@ -1,46 +1,88 @@
-# SympAi
+# SympAI
 
-Chronic disease monitoring platform. Patients submit daily readings via Telegram, doctors monitor them through a web dashboard.
+Chronic disease monitoring platform for hypertension and diabetes patients in Kazakhstan. Patients submit daily readings via Telegram; doctors monitor them through a web dashboard.
 
 ## What it does
 
-- **Telegram bot** collects daily BP, pulse, glucose, medication adherence, and symptoms from patients
-- **Risk engine** scores each reading (0–10) based on clinical rules and flags high-risk cases
-- **Doctor dashboard** shows patient list, risk levels, compliance stats, and unreviewed alerts
+| Component | Role |
+|---|---|
+| **Telegram bot** (`tlg/`) | Bilingual (KZ/RU) patient interface — registration, daily check-ins, inline buttons, medication reminders, evening compliance follow-up, PDF report on demand |
+| **Risk engine** (`api/services/risk.py`) | 4-zone clinical triage per reading — Critical / High / Medium / Low — with first-aid instructions for critical BP |
+| **FastAPI backend** (`api/`) | REST API, JWT auth, PDF report generation, PostgreSQL persistence |
+| **Doctor dashboard** (`web/`) | Login-gated React app — patient list, risk levels, compliance stats, BP trend charts |
+
+## Bot commands
+
+| Command | Description |
+|---|---|
+| `/start` | Register (new) or resume (returning patient) |
+| `/check` | Start daily check manually (runs automatically at 08:00 Almaty) |
+| `/report` | Generate and send a PDF medical report to share with your doctor |
+
+## Risk zones
+
+| Zone | Colour | Threshold | Action |
+|---|---|---|---|
+| Critical | 🆘 Red | SBP ≥ 180 or DBP ≥ 120 or chest pain | First aid steps + call 103 immediately |
+| High | 🚨 Yellow | SBP 160–179 or DBP 100–119 or dizziness | Urgent therapist visit |
+| Medium | ⚠️ Orange | SBP 140–159 or 2+ missed med days | Monitor closely |
+| Low | ✅ Green | Below thresholds | Home monitoring |
 
 ## Architecture
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Telegram    │     │   FastAPI    │     │  PostgreSQL  │
-│  Bot (tlg/)  │────▶│  API (api/)  │────▶│  (db/)       │
-└──────────────┘     └──────┬───────┘     └──────────────┘
-                            │
-                     ┌──────▼───────┐
-                     │  React App   │
-                     │  (web/)      │
-                     └──────────────┘
+┌──────────────────┐     ┌─────────────────┐     ┌──────────────┐
+│  Telegram Bot    │     │   FastAPI API   │     │  PostgreSQL  │
+│  (tlg/)          │────▶│   (api/)        │────▶│  (db/)       │
+│                  │     │                 │     └──────────────┘
+│  • inline UX     │     │  • risk scoring │
+│  • 3 cron jobs   │     │  • PDF reports  │
+│  • API-backed    │     │  • JWT auth     │
+└──────────────────┘     └────────┬────────┘
+                                  │
+                         ┌────────▼────────┐
+                         │  React Dashboard│
+                         │  (web/)         │
+                         │  • stat cards   │
+                         │  • BP charts    │
+                         └─────────────────┘
 ```
+
+## Daily schedule (Almaty time, UTC+5)
+
+| Time | Event |
+|---|---|
+| 08:00 | Daily check sent to all idle patients |
+| 09:00 | Medication reminder push notification |
+| 20:00 | Evening compliance check — asks if medication was taken; records reason if not |
 
 ## Project structure
 
 ```
-SympAi/
-├── api/                  # FastAPI backend
-│   ├── models/           # SQLModel ORM models
-│   ├── routers/          # API route handlers
-│   ├── schemas/          # Pydantic request/response schemas
-│   ├── services/         # Business logic (risk scoring, etc.)
-│   ├── utils/            # Helpers
-│   ├── main.py           # App entrypoint
-│   ├── Dockerfile
+sympai/
+├── api/
+│   ├── models/          # SQLAlchemy ORM (doctor, patient, daily_reading)
+│   ├── routers/         # auth, doctors, patients, daily_readings
+│   ├── schemas/         # Pydantic schemas
+│   ├── services/
+│   │   ├── risk.py      # 4-zone triage algorithm
+│   │   └── report.py    # PDF generator (reportlab + matplotlib)
+│   ├── main.py
 │   └── requirements.txt
-├── db/                   # Database
-│   ├── db_data/          # PG data volume (gitignored)
-│   └── schema.sql        # DDL
-├── tlg/                  # Telegram bot
-├── web/                  # React doctor dashboard
-└── compose.yaml          # Docker Compose (all services)
+├── db/
+│   ├── schema.sql        # Canonical DB schema
+│   ├── mock_data.sql     # Seed data (2 doctors, 5 patients)
+│   └── migrations/       # ALTER scripts for existing DBs
+├── tlg/
+│   ├── bot.py            # State machine + cron jobs + inline keyboards
+│   ├── texts.py          # Bilingual strings (kz/ru)
+│   ├── api_client.py     # httpx async API client
+│   ├── docs/bot_flow.md  # Full UX flow documentation
+│   └── tests/            # pytest unit tests + user stories
+├── web/
+│   └── app/routes/       # login, dashboard, patients.$id
+├── dev-compose.yaml      # All services for local dev
+└── .dev.env              # Env vars (gitignored)
 ```
 
 ## Prerequisites
@@ -52,51 +94,52 @@ SympAi/
 
 ```bash
 # 1. Clone
-git clone <repo-url> && cd SympAi
+git clone git@github.com:Assylbek-the-qt/sympai.git && cd sympai
 
-# 2. Environment
-cp .env.example .env
-# Fill in: POSTGRES_PASSWORD, TELEGRAM_BOT_TOKEN, JWT_SECRET
+# 2. Create env file
+cp .dev.env.example .dev.env
+# Fill in: TOKEN (Telegram), SECRET_KEY
 
-# 3. Run
-docker compose up -d
+# 3. Start all services
+docker compose -f dev-compose.yaml up --build
 
-# 4. Initialize DB
-docker compose exec db psql -U sympai -d sympai -f /docker-entrypoint-initdb.d/schema.sql
+# Services
+# API:       http://localhost:3069
+# API docs:  http://localhost:3069/docs
+# Dashboard: http://localhost:3000
 ```
 
-| Service   | URL                        |
-|-----------|----------------------------|
-| API       | http://localhost:8000      |
-| API Docs  | http://localhost:8000/docs |
-| Dashboard | http://localhost:3000      |
-| Database  | localhost:5432             |
-
-## Environment variables
+## Environment variables (.dev.env)
 
 ```env
-# Database
-POSTGRES_USER=sympai
-POSTGRES_PASSWORD=
-POSTGRES_DB=sympai
-DATABASE_URL=postgresql://sympai:<password>@db:5432/sympai
+# Database (auto-configured by dev-compose)
+DATABASE_URL=postgresql://postgres:postgres@db:5432/symp_ai
 
-# Telegram
-TELEGRAM_BOT_TOKEN=
+# Telegram bot
+TOKEN=<your_bot_token>
 
-# API
-JWT_SECRET=
-API_PORT=8000
+# API (inside Docker)
+API_URL=http://api:3069
+
+# Auth
+SECRET_KEY=change_me_in_production
 ```
 
-## Deployment (VPS)
+## Applying DB migrations
+
+For existing running databases (fresh containers auto-apply `schema.sql`):
 
 ```bash
-# On your VPS
-git pull origin main
-docker compose -f compose.yaml up -d --build
+docker compose -f dev-compose.yaml exec db \
+  psql -U postgres -d symp_ai -f /migrations/001_add_critical_risk.sql
 ```
 
+## Mock data credentials
+
+Dashboard login (password: `password123` for both):
+
+- `alice.morgan@sympai.local`
+- `bekzat.nurgali@sympai.local`
 
 ## License
 

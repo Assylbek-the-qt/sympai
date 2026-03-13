@@ -92,7 +92,7 @@ def get_stats(db: Session) -> dict:
             .order_by(DailyReading.reading_date.desc())
             .first()
         )
-        if latest and latest.risk_level == RiskLevel.high:
+        if latest and latest.risk_level in (RiskLevel.high, RiskLevel.critical):
             high_risk += 1
 
         count = (

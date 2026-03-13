@@ -13,6 +13,7 @@ class RiskLevel(str, Enum):
     low = "low"
     medium = "medium"
     high = "high"
+    critical = "critical"
 
 
 class DailyReading(Base):
@@ -30,6 +31,7 @@ class DailyReading(Base):
     notes = Column(Text, nullable=True)
     risk_score = Column(SmallInteger, nullable=True)
     risk_level = Column(SAEnum(RiskLevel), nullable=True)
+    medication_skip_reason = Column(Text, nullable=True)
     doctor_reviewed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 

@@ -55,3 +55,13 @@ def mark_reviewed(db: Session, reading_id: uuid.UUID) -> DailyReading | None:
     db.commit()
     db.refresh(reading)
     return reading
+
+
+def set_skip_reason(db: Session, reading_id: uuid.UUID, reason: str) -> DailyReading | None:
+    reading = get_by_id(db, reading_id)
+    if not reading:
+        return None
+    reading.medication_skip_reason = reason
+    db.commit()
+    db.refresh(reading)
+    return reading

@@ -1,12 +1,16 @@
+import io
 import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
 from schemas.patient import PatientCreate, PatientOut, PatientUpdate
 from services import patient as patient_service
+from services import daily_reading as reading_service
+from services import report as report_service
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -56,6 +60,36 @@ def get_compliance(patient_id: uuid.UUID, days: int = 30, db: Session = Depends(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient_service.get_compliance(db, patient_id, days)
+
+
+@router.get("/{patient_id}/report")
+def get_patient_report(patient_id: uuid.UUID, db: Session = Depends(get_db)):
+    patient = patient_service.get_by_id(db, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    readings = reading_service.get_by_patient(db, patient_id, limit=30)
+    pdf_bytes = report_service.build_pdf(patient, readings)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="sympai_report_{patient_id}.pdf"'},
+    )
+
+
+@router.get("/{patient_id}/chart")
+def get_patient_chart(patient_id: uuid.UUID, limit: int = 7, db: Session = Depends(get_db)):
+    patient = patient_service.get_by_id(db, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    readings = reading_service.get_by_patient(db, patient_id, limit=limit)
+    png_bytes = report_service.build_chart_png(readings)
+    if not png_bytes:
+        raise HTTPException(status_code=404, detail="No readings available for chart")
+    return StreamingResponse(
+        io.BytesIO(png_bytes),
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="chart_{patient_id}.png"'},
+    )
 
 
 @router.delete("/{patient_id}", status_code=204)

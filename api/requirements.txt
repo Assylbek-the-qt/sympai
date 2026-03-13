@@ -1,4 +1,6 @@
 bcrypt==5.0.0
+matplotlib==3.10.1
+reportlab==4.4.1
 python-jose[cryptography]==3.5.0
 annotated-doc==0.0.4
 annotated-types==0.7.0

@@ -32,6 +32,7 @@ class ReadingOut(BaseModel):
     notes: str | None
     risk_score: int | None
     risk_level: RiskLevel | None
+    medication_skip_reason: str | None
     doctor_reviewed_at: datetime | None
     created_at: datetime
 

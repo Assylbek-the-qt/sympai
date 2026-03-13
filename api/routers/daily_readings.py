@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -35,6 +35,18 @@ def get_reading(reading_id: uuid.UUID, db: Session = Depends(get_db)):
 @router.patch("/{reading_id}/review", response_model=ReadingOut)
 def review_reading(reading_id: uuid.UUID, db: Session = Depends(get_db)):
     reading = reading_service.mark_reviewed(db, reading_id)
+    if not reading:
+        raise HTTPException(status_code=404, detail="Reading not found")
+    return reading
+
+
+@router.patch("/{reading_id}/skip-reason", response_model=ReadingOut)
+def set_skip_reason(
+    reading_id: uuid.UUID,
+    reason: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+):
+    reading = reading_service.set_skip_reason(db, reading_id, reason)
     if not reading:
         raise HTTPException(status_code=404, detail="Reading not found")
     return reading

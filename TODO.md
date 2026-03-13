@@ -145,3 +145,71 @@
 ## Testing
 - [x] `tlg/tests/user_stories.txt` — 12 manual test scenarios
 - [x] `tlg/tests/test_bot.py` — 69 pytest unit test cases (run with pytest + pytest-asyncio)
+
+---
+
+## MedTech upgrade — feedback from semifinal (target: final judges + clinics)
+> Context: passed ANamed + Digital Kazakhstan semifinal. Clinic visit ~2026-03-23.
+> Ordered by impact.
+
+### 1. Triage system — 3 clinical zones (replaces low/medium/high)
+- [x] Redefine risk zones in `api/services/risk.py`:
+  - **Red** (`critical`): BP ≥ 180/120 or chest pain — immediate 103
+  - **Yellow** (`high`): BP 160–179 / 100–119 or dizziness — urgent therapist
+  - **Green** (`normal`): below thresholds — home monitoring
+- [x] Add `critical` as a new `risk_level` value in DB schema + Pydantic schemas
+- [x] Bot response for `critical`: show first aid steps (lie down, sublingual med, breathe deeply) before "call 103"
+- [x] Update bot `texts.py` with `risk_critical` key (kz + ru)
+
+### 2. PDF Medical Report — primary differentiator feature
+- [x] `pip install reportlab` (or `weasyprint`), add to `api/requirements.txt`
+- [x] `GET /patients/{id}/report` endpoint — returns PDF
+  - Last 30 days of readings
+  - BP + glucose trend chart embedded (matplotlib → PNG → PDF)
+  - Medication compliance %
+  - Risk level summary
+- [x] Bot: add `/report` command — fetches PDF from API, sends as document to patient
+- [x] Bot `texts.py`: add `report_generating`, `report_ready`, `report_error` keys (kz + ru)
+
+### 3. Inline buttons for numeric BP entry (UX)
+- [x] Replace reply keyboard Yes/No with `InlineKeyboardMarkup` in daily check
+- [x] For SBP: show preset inline buttons `[110] [120] [130] [140] [150] [160] [170] [180]` + "Other" (falls back to typed input)
+- [x] For DBP: `[70] [80] [90] [100] [110] [120]` + "Other"
+- [x] For pulse: `[60] [70] [80] [90] [100]` + "Other"
+- [x] Wire `CallbackQueryHandler` in `bot.py` alongside existing `MessageHandler`
+
+### 4. Medication reminder — morning push notification
+- [x] Add cron job at **09:00 Almaty** — sends "Time to take your medication" to all idle patients
+- [x] Add `last_reminder_sent` timestamp check so it only fires once per day per patient
+- [x] Bot `texts.py`: add `med_reminder` key (kz + ru)
+
+### 5. Evening medication compliance follow-up
+- [x] Add cron job at **20:00 Almaty** — asks patients who haven't submitted a reading today "Did you take your medication?"
+- [x] If "No" → ask reason: `[Forgot] [Ran out] [Side effects] [Other]`
+- [x] Store missed reason in new `medication_skip_reason` column on `daily_readings` (nullable)
+- [x] Surface missed reasons in doctor dashboard patient detail
+
+### 6. Weekly BP trend chart in Telegram
+- [x] After 7th consecutive daily reading, bot sends a chart image:
+  - `matplotlib` line chart: SBP + DBP over 7 days
+  - Saved as PNG, sent via `bot.send_photo`
+- [x] Also available on demand via `/chart` command
+- [x] Bot `texts.py`: add `chart_caption` key (kz + ru)
+
+### 7. NLP symptom understanding (free-text triage)
+- [ ] In `_daily_symptoms` handler: if user types free text instead of tapping a button, run simple keyword matching:
+  - "басым айналады / голова кружится / dizziness" → `dizziness`
+  - "бас ауырады / головная боль / head hurts" → `headache`
+  - "кеудем ауырады / боль в груди / chest pain" → `chest_pain`
+  - "желке / затылок / back of head" → `headache` + flag potential hypertensive crisis
+- [ ] If matched → confirm with user before saving: `"Мен дұрыс түсіндім бе: басым айналады?"` (inline Yes/No)
+- [ ] Unrecognized free text → show symptom keyboard
+
+### 8. Find nearest clinic button
+- [ ] Add `/clinic` command — replies with inline button linking to 2GIS / Google Maps search for "clinics near me"
+- [ ] Also surface this button in the `risk_high` and `risk_critical` response messages
+
+### 9. Clinical protocol references
+- [ ] Add `PROTOCOLS` dict in `tlg/protocols.py` mapping diagnosis + risk zone to recommended action per Kazakhstan MoH guidelines
+- [ ] Replace generic risk messages in `texts.py` with protocol-backed advice
+- [ ] Note in bot responses: "Per Kazakhstan MoH Clinical Protocol #X"

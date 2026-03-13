@@ -67,3 +67,27 @@ async def set_patient_state(patient_id: str, state: str | None) -> dict:
         r = await c.patch(f"/patients/{patient_id}", json={"state": state})
         r.raise_for_status()
         return r.json()
+
+
+async def get_report(patient_id: str) -> bytes:
+    """GET /patients/{id}/report — returns raw PDF bytes."""
+    async with httpx.AsyncClient(base_url=API_URL, timeout=30.0) as c:
+        r = await c.get(f"/patients/{patient_id}/report")
+        r.raise_for_status()
+        return r.content
+
+
+async def get_chart(patient_id: str, limit: int = 7) -> bytes:
+    """GET /patients/{id}/chart — returns raw PNG bytes of BP trend chart."""
+    async with httpx.AsyncClient(base_url=API_URL, timeout=20.0) as c:
+        r = await c.get(f"/patients/{patient_id}/chart", params={"limit": limit})
+        r.raise_for_status()
+        return r.content
+
+
+async def set_skip_reason(reading_id: str, reason: str) -> dict:
+    """PATCH /readings/{id}/skip-reason — records why medication was skipped."""
+    async with _client() as c:
+        r = await c.patch(f"/readings/{reading_id}/skip-reason", json={"reason": reason})
+        r.raise_for_status()
+        return r.json()

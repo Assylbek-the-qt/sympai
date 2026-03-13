@@ -5,7 +5,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TYPE diagnosis_type AS ENUM ('hypertension', 'diabetes', 'both');
-CREATE TYPE risk_level     AS ENUM ('low', 'medium', 'high');
+CREATE TYPE risk_level     AS ENUM ('low', 'medium', 'high', 'critical');
 
 -- ============================================================
 -- 1. DOCTORS
@@ -53,10 +53,11 @@ CREATE TABLE daily_readings (
     medication_taken    BOOLEAN     NOT NULL DEFAULT FALSE,
     symptoms            TEXT[],
     notes               TEXT,
-    risk_score          SMALLINT,
-    risk_level          risk_level,
-    doctor_reviewed_at  TIMESTAMPTZ,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    risk_score              SMALLINT,
+    risk_level              risk_level,
+    medication_skip_reason  VARCHAR(50),
+    doctor_reviewed_at      TIMESTAMPTZ,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     UNIQUE (patient_id, reading_date)
 );

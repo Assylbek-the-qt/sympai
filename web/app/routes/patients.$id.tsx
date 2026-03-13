@@ -17,9 +17,10 @@ export function meta({ data }: any) {
 }
 
 const RISK_COLOR: Record<string, string> = {
-  low:    "bg-green-100 text-green-800",
-  medium: "bg-yellow-100 text-yellow-800",
-  high:   "bg-red-100 text-red-800",
+  low:      "bg-green-100 text-green-800",
+  medium:   "bg-yellow-100 text-yellow-800",
+  high:     "bg-red-100 text-red-800",
+  critical: "bg-purple-100 text-purple-800",
 };
 
 export default function PatientDetail() {
@@ -98,6 +99,7 @@ export default function PatientDetail() {
                     <th className="px-6 py-3 text-left font-medium">BP</th>
                     <th className="px-6 py-3 text-left font-medium">Pulse</th>
                     <th className="px-6 py-3 text-left font-medium">Med taken</th>
+                    <th className="px-6 py-3 text-left font-medium">Skip reason</th>
                     <th className="px-6 py-3 text-left font-medium">Symptoms</th>
                     <th className="px-6 py-3 text-left font-medium">Risk</th>
                     <th className="px-6 py-3 text-left font-medium">Reviewed</th>
@@ -113,6 +115,9 @@ export default function PatientDetail() {
                         <span className={r.medication_taken ? "text-green-600" : "text-red-500"}>
                           {r.medication_taken ? "Yes" : "No"}
                         </span>
+                      </td>
+                      <td className="px-6 py-3 text-gray-500 text-xs">
+                        {!r.medication_taken && r.medication_skip_reason ? r.medication_skip_reason : "—"}
                       </td>
                       <td className="px-6 py-3 text-gray-500 text-xs">{r.symptoms?.join(", ") || "—"}</td>
                       <td className="px-6 py-3">
